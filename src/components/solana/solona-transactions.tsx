@@ -130,6 +130,42 @@ export class EscrowOrder {
         ],
     ]);
 }
+export class BuyOrder {
+    // tokenMint?: Uint8Array;
+    orderId: BigInt;
+    buyer: Uint8Array;
+    escrowAccount?: Uint8Array;
+    amount: BigInt;
+
+    constructor(fields: {
+        orderId: BigInt;
+        buyer: Uint8Array;
+        escrowAccount: Uint8Array,
+        amount: BigInt;
+    }) {
+        this.orderId = fields.orderId;
+        this.buyer = fields.buyer;
+        this.escrowAccount = fields.escrowAccount
+        this.amount = fields.amount;
+    }
+
+    static schema = new Map([
+        [
+            BuyOrder,
+            {
+                kind: 'struct',
+                fields: [
+                    ['orderId', 'u64'],
+                    ['buyer', [32]],
+                    ['escrowAccount', [32]],
+                    ['amount', 'u64'],
+                ],
+            },
+        ],
+    ]);
+}
+
+
 // ['tokenMint', [32]],
 // ['status', { type: 'string', length: 32 }],
 
@@ -137,6 +173,11 @@ export class EscrowOrder {
 // Function to serialize SellOrder data
 export const serializeSellOrder = (order: EscrowOrder): Uint8Array => {
     return serialize(EscrowOrder.schema, order);
+}
+
+// Function to serialize SellOrder data
+export const serializeBuyOrder = (order: BuyOrder): Uint8Array => {
+    return serialize(BuyOrder.schema, order);
 }
 
 // Function to create a sell order transaction

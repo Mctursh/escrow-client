@@ -1,32 +1,45 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FC, FormEvent, useEffect, useState } from 'react';
 import { AppHero } from '../ui/ui-layout'
 import { useWallet } from '@solana/wallet-adapter-react';
-import { clusterApiUrl, Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, sendAndConfirmRawTransaction, sendAndConfirmTransaction, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
-import { EscrowClient, EscrowOrder, OrderStatus, serializeSellOrder } from '../solana/solona-transactions';
+import { clusterApiUrl, Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
+import { BuyOrder, EscrowClient, EscrowOrder, OrderStatus, serializeBuyOrder, serializeSellOrder } from '../solana/solona-transactions';
+import { getAccount, getMint, getOrCreateAssociatedTokenAccount, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 // const BN = require("bn.js");
-import BN from 'bn.js';
+// import BN from 'bn.js';
 // const BN = require('bn.js');
 
-export default function DashboardFeature() {
+const DashboardFeature = () => {
   const connection = new Connection(clusterApiUrl('devnet'), 'confirmed')
   const programId = new PublicKey("DCeoFHjKkbXwNGCCLnfGjjHxKhw6yTn1wBijKzCWcj5f")
-  const secretKey = process.env.AUTHORITY_SECRET_KEY as string
+  const secretKey = import.meta.env.VITE_AUTHORITY_SECRET_KEY as string
   const authority = Keypair.fromSecretKey(Uint8Array.from(Buffer.from(secretKey, "base64")))
-
+  const USDC_DECIMAL = 1000000;
   let escrowClient = new EscrowClient(connection, programId)
+  
 
   const [solValue, setSolValue] = useState<number>(0)
   const [price, setPrice] = useState<number>(0)
+  const [allOrders, setAllOrders] = useState<EscrowOrder[]>([])
   const wallet = useWallet()
+  const USDC_TOEKN_ADDRESS = new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr")
 
   useEffect(() => {
+
+    // const USDC_TOEKN_ADDRESS = new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU")
+    // const USDC_TOEKN_ADDRESS = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
+    // getMint(connection, USDC_TOEKN_ADDRESS).then(res => {
+    //   console.log(res);
+    // })
+
+    
     escrowClient.getAllOrders().then(r => {
-      console.log(Number(r[0].amount) / LAMPORTS_PER_SOL);
-      console.log(Number(r[0].orderId));
-      console.log(Number(r[0].price));
-      console.log(new PublicKey(r[0].escrowAccount!).toBase58());
-      console.log(new PublicKey(r[0].seller).toBase58());
-      console.log((r[0].status));
+      setAllOrders(r)
+      // console.log(Number(r[0].amount) / LAMPORTS_PER_SOL);
+      // console.log(Number(r[0].orderId));
+      // console.log(Number(r[0].price));
+      // console.log(new PublicKey(r[0].escrowAccount!).toBase58());
+      // console.log(new PublicKey(r[0].seller).toBase58());
+      // console.log((r[0].status));
       
     })
   
@@ -35,6 +48,95 @@ export default function DashboardFeature() {
     }
   }, [])
   
+  const fulfilOrder = async (event: FormEvent) => {
+    event.preventDefault()
+    if(!wallet.connected){
+      alert("Kindly connect wallet then try again")
+      return;
+    }
+    // const fulfilOrder = async (order: EscrowOrder) => {
+    const { amount, price, escrowAccount, seller, orderId } = allOrders[0]
+    try {
+      
+      const buyerTokenAccount = await getOrCreateAssociatedTokenAccount(
+        connection,
+        authority, // The payer for creating token accounts (if needed)
+        USDC_TOEKN_ADDRESS, // Mint address for the token (e.g., USDC)
+        wallet.publicKey! // Owner of the token account
+      );
+  
+      const sellerTokenAccount = await getOrCreateAssociatedTokenAccount(
+        connection,
+        authority, // The payer for creating token accounts (if needed)
+        USDC_TOEKN_ADDRESS, // Mint address for the token (e.g., USDC)
+        new PublicKey(seller!) // Owner of the token account
+      );
+  
+      const buyerBalance = Number(buyerTokenAccount.amount) / USDC_DECIMAL
+      const sellingPrice = (Number(amount) / LAMPORTS_PER_SOL) * Number(price)
+  
+      console.log(buyerBalance);
+      console.log(sellingPrice);
+      
+      
+      if ( buyerBalance < sellingPrice) {
+        alert("Insufficient funds")
+        console.log("You don't have enough funds");
+        throw new Error("You don't have enough funds")
+      }
+  
+      const buyOrder = new BuyOrder({
+        orderId: orderId,
+        buyer: wallet.publicKey?.toBytes()!,
+        escrowAccount: escrowAccount!,
+        amount
+      })
+  
+      const serializedBuyOrder = serializeBuyOrder(buyOrder)
+  
+      const transaction = new Transaction()
+  
+      const fulfilOrderTransaction = new TransactionInstruction({
+        keys: [
+          { pubkey: authority.publicKey, isSigner: false, isWritable: true },
+          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: new PublicKey(seller), isSigner: false, isWritable: true },
+          { pubkey: wallet.publicKey!, isSigner: true, isWritable: true },
+          { pubkey: new PublicKey(escrowAccount!), isSigner: false, isWritable: true },
+          { pubkey: sellerTokenAccount.address, isSigner: false, isWritable: true },
+          { pubkey: buyerTokenAccount.address, isSigner: false, isWritable: true },
+        ],
+        programId,
+        data: Buffer.concat([Buffer.from([1]), serializedBuyOrder])
+      })
+  
+      transaction.add(fulfilOrderTransaction)
+      
+      transaction.feePayer = wallet.publicKey!;
+      const { blockhash } = await connection.getLatestBlockhash()
+      transaction.recentBlockhash = blockhash;
+  
+      // transaction.partialSign(authority)
+  
+      const signedTransaction = await wallet.signTransaction!(transaction)
+  
+      const signature = await connection.sendRawTransaction(signedTransaction.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed'
+      })
+      
+      const confirmation = await connection.confirmTransaction(signature, 'confirmed')
+  
+      if (confirmation.value.err) {
+        throw new Error('Transaction failed to confirm');
+      }
+  
+      console.log('Transaction successful:', signature);
+    } catch (error) {
+      console.error("Transactin failed", error);
+    }
+  }
   
 
   async function makeSwap(event: FormEvent) {
@@ -130,6 +232,7 @@ export default function DashboardFeature() {
 
       const confirmation = await connection.confirmTransaction(signature, 'confirmed');
 
+
       if (confirmation.value.err) {
           throw new Error('Transaction failed to confirm');
       }
@@ -150,7 +253,8 @@ export default function DashboardFeature() {
     <div>
       
       <AppHero title="Swap X" subtitle="Swap your tokens" />
-      <form onSubmit={makeSwap} className='flex flex-col gap-y-4'>
+      <form onSubmit={fulfilOrder} className='flex flex-col gap-y-4'>
+      {/* <form onSubmit={makeSwap} className='flex flex-col gap-y-4'> */}
         <div className='flex items-center gap-x-3'>
           <label htmlFor="">SOL</label>
             <input value={solValue} 
@@ -186,3 +290,6 @@ export default function DashboardFeature() {
     </div>
   )
 }
+
+
+export default DashboardFeature
