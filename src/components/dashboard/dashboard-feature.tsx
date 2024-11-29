@@ -1,9 +1,9 @@
-import { FC, FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { AppHero } from '../ui/ui-layout'
 import { useWallet } from '@solana/wallet-adapter-react';
 import { clusterApiUrl, Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
 import { BuyOrder, EscrowClient, EscrowOrder, OrderStatus, serializeBuyOrder, serializeSellOrder } from '../solana/solona-transactions';
-import { getAccount, getMint, getOrCreateAssociatedTokenAccount, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { getOrCreateAssociatedTokenAccount, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 // const BN = require("bn.js");
 // import BN from 'bn.js';
 // const BN = require('bn.js');
@@ -290,8 +290,7 @@ const DashboardFeature = () => {
     <div>
       
       <AppHero title="Swap X" subtitle="Swap your tokens" />
-      <form onSubmit={fulfilOrder} className='flex flex-col gap-y-4'>
-      {/* <form onSubmit={makeSwap} className='flex flex-col gap-y-4'> */}
+      <form onSubmit={makeSwap} className='flex flex-col gap-y-4'>
         <div className='flex items-center gap-x-3'>
           <label htmlFor="">SOL</label>
             <input 
@@ -322,6 +321,9 @@ const DashboardFeature = () => {
           <button type='submit' className='p-3 bg-[#641AE6] rounded-md text-white w-full' >Make Swap</button>
         </div>
       </form>
+        <div className='flex justify-center w-full mt-6'>
+          <button onClick={fulfilOrder} type='submit' className='p-3 bg-[#641AE6] rounded-md text-white w-full' >Fulfil Order</button>
+        </div>
       {/* <div className="max-w-xl mx-auto py-6 sm:px-6 lg:px-8 text-center">
         <div className="space-y-2">
           <p>Here are some helpful links to get you started.</p>

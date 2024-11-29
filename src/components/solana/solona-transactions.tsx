@@ -1,19 +1,11 @@
 import {
     Connection,
     PublicKey,
-    Transaction,
-    SystemProgram,
-    TransactionInstruction,
-    Keypair,
-    clusterApiUrl,
 } from "@solana/web3.js";
 import { serialize, deserialize } from "borsh";
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 // const BN = require("bn.js");
-import BN from 'bn.js';
 
 // Define the connection and program ID
-const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
 // const programId = new PublicKey("YOUR_PROGRAM_ID");
 
 // type OrderStatus = "Active" | "Completed" | "Canceled";
@@ -324,14 +316,14 @@ export class EscrowClient {
             }
         ];
 
-        // if (user) {
-        //     filters.push({
-        //         memcmp: {
-        //             offset: 8, // after order_id
-        //             bytes: user.toBase58(),
-        //         },
-        //     });
-        // }
+        if (user) {
+            // filters.push({
+            //     memcmp: {
+            //         offset: 8, // after order_id
+            //         bytes: user.toBase58(),
+            //     },
+            // });
+        }
 
         const accounts = await this.connection.getProgramAccounts(
             this.programId,
