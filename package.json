@@ -21,6 +21,7 @@
     "bn.js": "^4.12.1",
     "borsh": "^0.7.0",
     "daisyui": "^4.12.10",
+    "esbuild": "^0.24.0",
     "jotai": "^2.9.3",
     "node-stdlib-browser": "^1.2.0",
     "react": "^18.3.1",
@@ -44,7 +45,7 @@
     "prettier": "^3.3.3",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.0.1",
-    "vite": "^5.4.1",
+    "vite": "^6.0.1",
     "vite-plugin-node-polyfills": "^0.22.0",
     "vite-tsconfig-paths": "^5.0.1"
   },
