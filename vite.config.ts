@@ -1,4 +1,4 @@
-import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill'
+// import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
@@ -33,9 +33,9 @@ export default defineConfig({
   optimizeDeps: {
     esbuildOptions: {
       plugins: [
-        NodeGlobalsPolyfillPlugin({
-          process: true,
-        }),
+        // NodeGlobalsPolyfillPlugin({
+        //   process: true,
+        // }),
       ],
     },
   },
