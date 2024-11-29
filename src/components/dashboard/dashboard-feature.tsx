@@ -11,7 +11,7 @@ import { getOrCreateAssociatedTokenAccount, TOKEN_PROGRAM_ID } from '@solana/spl
 const DashboardFeature = () => {
   const connection = new Connection(clusterApiUrl('devnet'), 'confirmed')
   // const programId_v1 = new PublicKey("DCeoFHjKkbXwNGCCLnfGjjHxKhw6yTn1wBijKzCWcj5f")
-  const programId = new PublicKey("BRXQywra3sTUaAMfFnNoUk73cYV3r9ACnwEee7LHhGeY")
+  const programId = new PublicKey(import.meta.env.VITE_PROGRAM_ID as string)
   const secretKey = import.meta.env.VITE_AUTHORITY_SECRET_KEY as string
   const authority = Keypair.fromSecretKey(Uint8Array.from(Buffer.from(secretKey, "base64")))
   const USDC_DECIMAL = 1000000;
@@ -19,8 +19,8 @@ const DashboardFeature = () => {
   let escrowClient = new EscrowClient(connection, programId)
   
 
-  const [solValue, setSolValue] = useState<string>()
-  const [price, setPrice] = useState<string>()
+  const [solValue, setSolValue] = useState<string>('')
+  const [price, setPrice] = useState<string>('')
   const [allOrders, setAllOrders] = useState<EscrowOrder[]>([])
   const wallet = useWallet()
   const USDC_TOEKN_ADDRESS = new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr")
