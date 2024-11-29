@@ -217,7 +217,7 @@ export class EscrowClient {
         orderIdBuffer.writeBigUInt64LE(BigInt(orderId));
         let [escrowAccountAddress] = PublicKey.findProgramAddressSync(
             [
-              Buffer.from(`escrow_order`),
+              Buffer.from(`escrow_order_v2`),
               sellerPublicKey.toBuffer()!,
               orderIdBuffer,
             ],
@@ -227,9 +227,21 @@ export class EscrowClient {
         return escrowAccountAddress
     }
 
+    async deriveOrderTokenPDA(orderPdaAddress: PublicKey): Promise<PublicKey> {
+        let [escrowSolTokenAddress] = PublicKey.findProgramAddressSync(
+            [
+              Buffer.from(`escrow_token_order_v2`),
+              orderPdaAddress.toBuffer()!,
+            ],
+            this.programId,
+          );
+          
+        return escrowSolTokenAddress
+    }
+
     async getCounterAddress(): Promise<PublicKey> {
         const [counterPda] = await PublicKey.findProgramAddressSync(
-            [Buffer.from('order_counter')],
+            [Buffer.from('order_counter_v2')],
             this.programId
         );
         return counterPda;

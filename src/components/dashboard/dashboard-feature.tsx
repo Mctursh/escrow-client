@@ -1,4 +1,4 @@
-import { FC, FormEvent, useEffect, useState } from 'react';
+import { FC, FormEvent, useEffect, useMemo, useState } from 'react';
 import { AppHero } from '../ui/ui-layout'
 import { useWallet } from '@solana/wallet-adapter-react';
 import { clusterApiUrl, Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
@@ -10,15 +10,17 @@ import { getAccount, getMint, getOrCreateAssociatedTokenAccount, TOKEN_PROGRAM_I
 
 const DashboardFeature = () => {
   const connection = new Connection(clusterApiUrl('devnet'), 'confirmed')
-  const programId = new PublicKey("DCeoFHjKkbXwNGCCLnfGjjHxKhw6yTn1wBijKzCWcj5f")
+  // const programId_v1 = new PublicKey("DCeoFHjKkbXwNGCCLnfGjjHxKhw6yTn1wBijKzCWcj5f")
+  const programId = new PublicKey("BRXQywra3sTUaAMfFnNoUk73cYV3r9ACnwEee7LHhGeY")
   const secretKey = import.meta.env.VITE_AUTHORITY_SECRET_KEY as string
   const authority = Keypair.fromSecretKey(Uint8Array.from(Buffer.from(secretKey, "base64")))
   const USDC_DECIMAL = 1000000;
+  const MAX_DECIMAL = 5;
   let escrowClient = new EscrowClient(connection, programId)
   
 
-  const [solValue, setSolValue] = useState<number>(0)
-  const [price, setPrice] = useState<number>(0)
+  const [solValue, setSolValue] = useState<string>()
+  const [price, setPrice] = useState<string>()
   const [allOrders, setAllOrders] = useState<EscrowOrder[]>([])
   const wallet = useWallet()
   const USDC_TOEKN_ADDRESS = new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr")
@@ -34,6 +36,8 @@ const DashboardFeature = () => {
     
     escrowClient.getAllOrders().then(r => {
       setAllOrders(r)
+      console.log(r);
+      
       // console.log(Number(r[0].amount) / LAMPORTS_PER_SOL);
       // console.log(Number(r[0].orderId));
       // console.log(Number(r[0].price));
@@ -47,6 +51,33 @@ const DashboardFeature = () => {
       
     }
   }, [])
+
+  const recieveAmount = useMemo(() => {
+    return (Number(solValue) * Number(price)).toFixed(5)
+  },[solValue, price])
+
+  const validateInput = (input: string, previousInput: string): string => {
+    let value = ''
+    if (typeof input != 'string') return ''
+
+    // 1. Allow only numbers and a single dot with regex
+    const regex = new RegExp(`^\\d*(\\.\\d{0,${MAX_DECIMAL}})?$`);
+    if (!regex.test(input)) {
+      return previousInput
+      // value; // Don't update the value if invalid
+    }
+
+    // 2. Enforce maximum decimals dynamically
+    const parts = input.split(".");
+    if (parts.length === 2 && parts[1].length > MAX_DECIMAL) {
+      value = `${parts[0]}.${parts[1].substring(0, MAX_DECIMAL)}`
+    } else {
+      value = input; // Update value if valid
+    }
+
+    return value
+
+  }
   
   const fulfilOrder = async (event: FormEvent) => {
     event.preventDefault()
@@ -71,9 +102,11 @@ const DashboardFeature = () => {
         USDC_TOEKN_ADDRESS, // Mint address for the token (e.g., USDC)
         new PublicKey(seller!) // Owner of the token account
       );
+
+      const deriveOrderTokenPDA = await escrowClient.deriveOrderTokenPDA(new PublicKey(escrowAccount!))
   
       const buyerBalance = Number(buyerTokenAccount.amount) / USDC_DECIMAL
-      const sellingPrice = (Number(amount) / LAMPORTS_PER_SOL) * Number(price)
+      const sellingPrice = Number(((Number(amount) / LAMPORTS_PER_SOL) * (Number(price) / USDC_DECIMAL)).toFixed(5))
   
       console.log(buyerBalance);
       console.log(sellingPrice);
@@ -106,6 +139,7 @@ const DashboardFeature = () => {
           { pubkey: new PublicKey(escrowAccount!), isSigner: false, isWritable: true },
           { pubkey: sellerTokenAccount.address, isSigner: false, isWritable: true },
           { pubkey: buyerTokenAccount.address, isSigner: false, isWritable: true },
+          { pubkey: deriveOrderTokenPDA, isSigner: false, isWritable: true },
         ],
         programId,
         data: Buffer.concat([Buffer.from([1]), serializedBuyOrder])
@@ -160,13 +194,15 @@ const DashboardFeature = () => {
       Number(orderId),
     )
 
+    const deriveOrderTokenPDA = await escrowClient.deriveOrderTokenPDA(escrowAccountAddress)
+
     let sellOrder = new EscrowOrder({
       // tokenMint: null,
       orderId: orderId,
       seller: wallet.publicKey?.toBytes()!,
       escrowAccount: escrowAccountAddress.toBytes(),
-      amount: BigInt(solValue * LAMPORTS_PER_SOL),
-      price: BigInt(price),
+      amount: BigInt(Number(solValue) * LAMPORTS_PER_SOL),
+      price: BigInt(Number(price) * USDC_DECIMAL),
       status: OrderStatus.Active,
     })
 
@@ -198,6 +234,7 @@ const DashboardFeature = () => {
             { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
             { pubkey: wallet.publicKey!, isSigner: true, isWritable: true },
             { pubkey: new PublicKey(sellOrder.escrowAccount!), isSigner: false, isWritable: true },
+            { pubkey: deriveOrderTokenPDA, isSigner: false, isWritable: true },
         ],
         programId: programId,
         data: Buffer.concat([Buffer.from([0]), serializedOrder]),
@@ -257,19 +294,29 @@ const DashboardFeature = () => {
       {/* <form onSubmit={makeSwap} className='flex flex-col gap-y-4'> */}
         <div className='flex items-center gap-x-3'>
           <label htmlFor="">SOL</label>
-            <input value={solValue} 
-            onChange={e => setSolValue(Number(e.target.value))} type="text" inputMode="decimal" pattern="^\d*(\.\d{0,9})?$" autoComplete="off" autoCorrect="off" spellCheck="false" placeholder="Amount" step="any" minLength={1} maxLength={20} name="amount"></input>
+            <input 
+              value={solValue} 
+              onChange={e => setSolValue(validateInput(e.target.value, solValue!))} 
+              type="text"
+              // placeholder={`Enter amount (max ${MAX_DECIMAL} decimals)`}
+              >
+            </input>
         </div>
         <p>To receive </p>
         <div className='flex items-center gap-x-3'>
-          <label htmlFor="">Price $</label>
+          <label htmlFor="">Price $/SOL</label>
             <input 
-            value={price}
-            onChange={e => setPrice(Number(e.target.value))}
-            type="text" inputMode="decimal" pattern="^\d*(\.\d{0,9})?$" autoComplete="off" autoCorrect="off" spellCheck="false" placeholder="Amount" step="any" minLength={1} maxLength={20} name="amount"></input>
+              value={price}
+              onChange={e => setPrice(validateInput(e.target.value, price!))}
+              type="text"
+              // placeholder={`Enter amount (max ${MAX_DECIMAL} decimals)`}
+              >
+            </input>
         </div>
 
-        <p>You will recieve {solValue * price} USDC</p>
+        {
+          solValue && price && <p>You will recieve {recieveAmount} USDC</p>
+        }
 
         <div className='flex justify-center w-full mt-6'>
           <button type='submit' className='p-3 bg-[#641AE6] rounded-md text-white w-full' >Make Swap</button>
