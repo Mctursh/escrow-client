@@ -1,29 +1,26 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { AppHero } from '../ui/ui-layout'
 import { useWallet } from '@solana/wallet-adapter-react';
-import { clusterApiUrl, Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
-import { BuyOrder, EscrowClient, EscrowOrder, OrderStatus, serializeBuyOrder, serializeSellOrder } from '../solana/solona-transactions';
-import { getOrCreateAssociatedTokenAccount, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
+import { escrowClient, EscrowOrder, OrderStatus, serializeSellOrder } from '../solana/solona-transactions';
+
 // const BN = require("bn.js");
 // import BN from 'bn.js';
 // const BN = require('bn.js');
 
 const DashboardFeature = () => {
-  const connection = new Connection(clusterApiUrl('devnet'), 'confirmed')
+  const connection = escrowClient.connection
   // const programId_v1 = new PublicKey("DCeoFHjKkbXwNGCCLnfGjjHxKhw6yTn1wBijKzCWcj5f")
-  const programId = new PublicKey(import.meta.env.VITE_PROGRAM_ID as string)
+  const programId = escrowClient.programId
   const secretKey = import.meta.env.VITE_AUTHORITY_SECRET_KEY as string
   const authority = Keypair.fromSecretKey(Uint8Array.from(Buffer.from(secretKey, "base64")))
-  const USDC_DECIMAL = 1000000;
-  const MAX_DECIMAL = 5;
-  let escrowClient = new EscrowClient(connection, programId)
+  const USDC_DECIMAL = escrowClient.USDC_DECIMAL
+  const MAX_DECIMAL = escrowClient.MAX_DECIMAL
   
 
   const [solValue, setSolValue] = useState<string>('')
   const [price, setPrice] = useState<string>('')
-  const [allOrders, setAllOrders] = useState<EscrowOrder[]>([])
   const wallet = useWallet()
-  const USDC_TOEKN_ADDRESS = new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr")
 
   useEffect(() => {
 
@@ -34,18 +31,7 @@ const DashboardFeature = () => {
     // })
 
     
-    escrowClient.getAllOrders().then(r => {
-      setAllOrders(r)
-      console.log(r);
-      
-      // console.log(Number(r[0].amount) / LAMPORTS_PER_SOL);
-      // console.log(Number(r[0].orderId));
-      // console.log(Number(r[0].price));
-      // console.log(new PublicKey(r[0].escrowAccount!).toBase58());
-      // console.log(new PublicKey(r[0].seller).toBase58());
-      // console.log((r[0].status));
-      
-    })
+  
   
     return () => {
       
@@ -77,99 +63,6 @@ const DashboardFeature = () => {
 
     return value
 
-  }
-  
-  const fulfilOrder = async (event: FormEvent) => {
-    event.preventDefault()
-    if(!wallet.connected){
-      alert("Kindly connect wallet then try again")
-      return;
-    }
-    // const fulfilOrder = async (order: EscrowOrder) => {
-    const { amount, price, escrowAccount, seller, orderId } = allOrders[0]
-    try {
-      
-      const buyerTokenAccount = await getOrCreateAssociatedTokenAccount(
-        connection,
-        authority, // The payer for creating token accounts (if needed)
-        USDC_TOEKN_ADDRESS, // Mint address for the token (e.g., USDC)
-        wallet.publicKey! // Owner of the token account
-      );
-  
-      const sellerTokenAccount = await getOrCreateAssociatedTokenAccount(
-        connection,
-        authority, // The payer for creating token accounts (if needed)
-        USDC_TOEKN_ADDRESS, // Mint address for the token (e.g., USDC)
-        new PublicKey(seller!) // Owner of the token account
-      );
-
-      const deriveOrderTokenPDA = await escrowClient.deriveOrderTokenPDA(new PublicKey(escrowAccount!))
-  
-      const buyerBalance = Number(buyerTokenAccount.amount) / USDC_DECIMAL
-      const sellingPrice = Number(((Number(amount) / LAMPORTS_PER_SOL) * (Number(price) / USDC_DECIMAL)).toFixed(5))
-  
-      console.log(buyerBalance);
-      console.log(sellingPrice);
-      
-      
-      if ( buyerBalance < sellingPrice) {
-        alert("Insufficient funds")
-        console.log("You don't have enough funds");
-        throw new Error("You don't have enough funds")
-      }
-  
-      const buyOrder = new BuyOrder({
-        orderId: orderId,
-        buyer: wallet.publicKey?.toBytes()!,
-        escrowAccount: escrowAccount!,
-        amount
-      })
-  
-      const serializedBuyOrder = serializeBuyOrder(buyOrder)
-  
-      const transaction = new Transaction()
-  
-      const fulfilOrderTransaction = new TransactionInstruction({
-        keys: [
-          { pubkey: authority.publicKey, isSigner: false, isWritable: true },
-          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: new PublicKey(seller), isSigner: false, isWritable: true },
-          { pubkey: wallet.publicKey!, isSigner: true, isWritable: true },
-          { pubkey: new PublicKey(escrowAccount!), isSigner: false, isWritable: true },
-          { pubkey: sellerTokenAccount.address, isSigner: false, isWritable: true },
-          { pubkey: buyerTokenAccount.address, isSigner: false, isWritable: true },
-          { pubkey: deriveOrderTokenPDA, isSigner: false, isWritable: true },
-        ],
-        programId,
-        data: Buffer.concat([Buffer.from([1]), serializedBuyOrder])
-      })
-  
-      transaction.add(fulfilOrderTransaction)
-      
-      transaction.feePayer = wallet.publicKey!;
-      const { blockhash } = await connection.getLatestBlockhash()
-      transaction.recentBlockhash = blockhash;
-  
-      // transaction.partialSign(authority)
-  
-      const signedTransaction = await wallet.signTransaction!(transaction)
-  
-      const signature = await connection.sendRawTransaction(signedTransaction.serialize(), {
-        skipPreflight: false,
-        preflightCommitment: 'confirmed'
-      })
-      
-      const confirmation = await connection.confirmTransaction(signature, 'confirmed')
-  
-      if (confirmation.value.err) {
-        throw new Error('Transaction failed to confirm');
-      }
-  
-      console.log('Transaction successful:', signature);
-    } catch (error) {
-      console.error("Transactin failed", error);
-    }
   }
   
 
@@ -287,55 +180,47 @@ const DashboardFeature = () => {
   }
 
   return (
-    <div>
+    <div className='w-[35vw]' >
       
-      <AppHero title="Swap X" subtitle="Swap your tokens" />
-      <form onSubmit={makeSwap} className='flex flex-col gap-y-4'>
-        <div className='flex items-center gap-x-3'>
-          <label htmlFor="">SOL</label>
-            <input 
-              value={solValue} 
-              onChange={e => setSolValue(validateInput(e.target.value, solValue!))} 
-              type="text"
-              // placeholder={`Enter amount (max ${MAX_DECIMAL} decimals)`}
-              >
-            </input>
-        </div>
-        <p>To receive </p>
-        <div className='flex items-center gap-x-3'>
-          <label htmlFor="">Price $/SOL</label>
-            <input 
-              value={price}
-              onChange={e => setPrice(validateInput(e.target.value, price!))}
-              type="text"
-              // placeholder={`Enter amount (max ${MAX_DECIMAL} decimals)`}
-              >
-            </input>
-        </div>
+      <AppHero title="Swap your tokens" subtitle="" />
+      <div className="px-8">
+        <form onSubmit={makeSwap} className='flex flex-col gap-y-4' >
+          <div className='flex items-center gap-x-3'>
+            {/* <label htmlFor="">SOL</label> */}
+              <input 
+                className="input input-bordered w-full"
+                value={solValue} 
+                onChange={e => setSolValue(validateInput(e.target.value, solValue!))} 
+                type="text"
+                placeholder={`Enter SOL`}
+                >
+              </input>
+          </div>
+          <p>To receive </p>
+          <div className='flex items-center gap-x-3'>
+            {/* <label htmlFor="">Price $/SOL</label> */}
+              <input
+                className="input input-bordered w-full"
+                value={price}
+                onChange={e => setPrice(validateInput(e.target.value, price!))}
+                type="text"
+                placeholder={`Price $/SOL`}
+                >
+              </input>
+          </div>
 
-        {
-          solValue && price && <p>You will recieve {recieveAmount} USDC</p>
-        }
+          {
+            solValue && price && <p>You will recieve {recieveAmount} USDC</p>
+          }
 
-        <div className='flex justify-center w-full mt-6'>
-          <button type='submit' className='p-3 bg-[#641AE6] rounded-md text-white w-full' >Make Swap</button>
-        </div>
-      </form>
-        <div className='flex justify-center w-full mt-6'>
+          <div className='flex justify-center w-full mt-6'>
+            <button type='submit' className='p-3 bg-[#641AE6] rounded-md text-white w-full' >Make Swap</button>
+          </div>
+        </form>
+        {/* <div className='flex justify-center w-full mt-6'>
           <button onClick={fulfilOrder} type='submit' className='p-3 bg-[#641AE6] rounded-md text-white w-full' >Fulfil Order</button>
-        </div>
-      {/* <div className="max-w-xl mx-auto py-6 sm:px-6 lg:px-8 text-center">
-        <div className="space-y-2">
-          <p>Here are some helpful links to get you started.</p>
-          {links.map((link, index) => (
-            <div key={index}>
-              <a href={link.href} className="link" target="_blank" rel="noopener noreferrer">
-                {link.label}
-              </a>
-            </div>
-          ))}
-        </div>
-      </div> */}
+        </div> */}
+      </div>
     </div>
   )
 }

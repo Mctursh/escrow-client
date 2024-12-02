@@ -1,14 +1,17 @@
+import { getOrCreateAssociatedTokenAccount, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { WalletContextState } from "@solana/wallet-adapter-react";
 import {
+    clusterApiUrl,
     Connection,
+    Keypair,
+    LAMPORTS_PER_SOL,
     PublicKey,
+    SystemProgram,
+    Transaction,
+    TransactionInstruction,
 } from "@solana/web3.js";
 import { serialize, deserialize } from "borsh";
-// const BN = require("bn.js");
 
-// Define the connection and program ID
-// const programId = new PublicKey("YOUR_PROGRAM_ID");
-
-// type OrderStatus = "Active" | "Completed" | "Canceled";
 
 // Define the OrderStatus enum
 export enum OrderStatus {
@@ -17,45 +20,15 @@ export enum OrderStatus {
     Cancelled = 2,
 }
   
-  // Define the Borsh schema for OrderStatus
-  export const OrderStatusSchema = new Map([
-    [OrderStatus.Active, [8]],
-    [OrderStatus.Completed, [8]],
-    [OrderStatus.Cancelled, [8]],
-  ]);
+// Define the Borsh schema for OrderStatus
+export const OrderStatusSchema = new Map([
+[OrderStatus.Active, [8]],
+[OrderStatus.Completed, [8]],
+[OrderStatus.Cancelled, [8]],
+]);
 
-// Define SellOrder structure to serialize/deserialize
-// export class SellOrder {
-//     order_id: number
-//     seller: PublicKey;
-//     tokenMint?: PublicKey;
-//     escrow_account?: PublicKey;
-//     amount: number;
-//     price: number;
-//     status: OrderStatus;
-
-//     constructor(fields: { seller: Uint8Array, tokenMint: Uint8Array, escrowAccount: Uint8Array, amount: number, price: number, order_id: number, status: OrderStatus }) {
-//         this.seller = new PublicKey(fields.seller);
-//         this.tokenMint = new PublicKey(fields.tokenMint);
-//         this.escrow_account = new PublicKey(fields.escrowAccount);
-//         this.amount = fields.amount;
-//         this.price = fields.price;
-//         this.status = fields.status;
-//         this.order_id = fields.order_id
-//     }
-// }
-
-// // Borsh schema for SellOrder
-// const SellOrderSchema = new Map([
-//     [SellOrder, {kind: 'struct', fields: [
-//         ['seller', [32]],
-//         ['tokenMint', [32]],
-//         ['escrowAccount', [32]],
-//         ['amount', 'u64'],
-//         ['price', 'u64'],
-//         ['status', 'enum'],
-//     ]}],
-// ]);
+const secretKey = import.meta.env.VITE_AUTHORITY_SECRET_KEY as string
+const authority = Keypair.fromSecretKey(Uint8Array.from(Buffer.from(secretKey, "base64")))
 
 class OrderCounter {
     totalOrders: BigInt;
@@ -157,9 +130,7 @@ export class BuyOrder {
     ]);
 }
 
-
-// ['tokenMint', [32]],
-// ['status', { type: 'string', length: 32 }],
+// const 
 
 
 // Function to serialize SellOrder data
@@ -172,37 +143,110 @@ export const serializeBuyOrder = (order: BuyOrder): Uint8Array => {
     return serialize(BuyOrder.schema, order);
 }
 
-// Function to create a sell order transaction
-// export async function createSellOrder(wallet: any, order: EscrowOrder) {
-//     const transaction = new Transaction();
-//     const serializedOrder = serializeSellOrder(order);
+class EscrowClient {
+    readonly connection: Connection
+    readonly programId: PublicKey
+    readonly USDC_DECIMAL = 1000000;
+    readonly USDC_TOEKN_ADDRESS = new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
+    readonly MAX_DECIMAL = 5;
 
-//     const createOrderIx = new TransactionInstruction({
-//         keys: [
-//             { pubkey: wallet.publicKey, isSigner: true, isWritable: true },
-//             // { pubkey: new PublicKey(order.escrowAccount), isSigner: false, isWritable: true },
-//         ],
-//         programId: programId,
-//         data: Buffer.concat([Buffer.from([0]), serializedOrder]),
-//     });
-
-//     transaction.add(createOrderIx);
-//     const signature = await connection.sendTransaction(transaction, [wallet], { skipPreflight: false, preflightCommitment: "confirmed" });
-//     console.log("Transaction signature:", signature);
-// }
-
-export class EscrowClient {
-    private connection: Connection
-    private programId: PublicKey
     constructor(
-        // private connection: Connection,
-        // private programId: PublicKey,
         connection: Connection,
         programId: PublicKey,
     ) {
         this.connection = connection
         this.programId = programId
     }
+
+    async fulfilOrder (order: EscrowOrder, wallet: WalletContextState): Promise<string | null> {
+        if(!wallet.connected){
+          alert("Kindly connect wallet then try again")
+          return null;
+        }
+        // const fulfilOrder = async (order: EscrowOrder) => {
+        const { amount, price, escrowAccount, seller, orderId } = order
+        try {
+          
+          const buyerTokenAccount = await getOrCreateAssociatedTokenAccount(
+            this.connection,
+            authority, // The payer for creating token accounts (if needed)
+            this.USDC_TOEKN_ADDRESS, // Mint address for the token (e.g., USDC)
+            wallet.publicKey! // Owner of the token account
+          );
+      
+          const sellerTokenAccount = await getOrCreateAssociatedTokenAccount(
+            connection,
+            authority, // The payer for creating token accounts (if needed)
+            this.USDC_TOEKN_ADDRESS, // Mint address for the token (e.g., USDC)
+            new PublicKey(seller!) // Owner of the token account
+          );
+    
+          const deriveOrderTokenPDA = await escrowClient.deriveOrderTokenPDA(new PublicKey(escrowAccount!))
+      
+          const buyerBalance = Number(buyerTokenAccount.amount) / this.USDC_DECIMAL
+          const sellingPrice = Number(((Number(amount) / LAMPORTS_PER_SOL) * (Number(price) / this.USDC_DECIMAL)).toFixed(5))
+      
+          console.log(buyerBalance);
+          console.log(sellingPrice);
+          
+          
+          if ( buyerBalance < sellingPrice) {
+            alert("Insufficient funds")
+            console.log("You don't have enough funds");
+            throw new Error("You don't have enough funds")
+          }
+      
+          const buyOrder = new BuyOrder({
+            orderId: orderId,
+            buyer: wallet.publicKey?.toBytes()!,
+            escrowAccount: escrowAccount!,
+            amount
+          })
+      
+          const serializedBuyOrder = serializeBuyOrder(buyOrder)
+      
+          const transaction = new Transaction()
+      
+          const fulfilOrderTransaction = new TransactionInstruction({
+            keys: [
+              { pubkey: authority.publicKey, isSigner: false, isWritable: true },
+              { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+              { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+              { pubkey: new PublicKey(seller), isSigner: false, isWritable: true },
+              { pubkey: wallet.publicKey!, isSigner: true, isWritable: true },
+              { pubkey: new PublicKey(escrowAccount!), isSigner: false, isWritable: true },
+              { pubkey: sellerTokenAccount.address, isSigner: false, isWritable: true },
+              { pubkey: buyerTokenAccount.address, isSigner: false, isWritable: true },
+              { pubkey: deriveOrderTokenPDA, isSigner: false, isWritable: true },
+            ],
+            programId,
+            data: Buffer.concat([Buffer.from([1]), serializedBuyOrder])
+          })
+      
+          transaction.add(fulfilOrderTransaction)
+          transaction.feePayer = wallet.publicKey!;
+          const { blockhash } = await connection.getLatestBlockhash()
+          transaction.recentBlockhash = blockhash;
+      
+          const signedTransaction = await wallet.signTransaction!(transaction)
+          const signature = await connection.sendRawTransaction(signedTransaction.serialize(), {
+            skipPreflight: false,
+            preflightCommitment: 'confirmed'
+          })
+          
+          const confirmation = await connection.confirmTransaction(signature, 'confirmed')
+      
+          if (confirmation.value.err) {
+            throw new Error('Transaction failed to confirm');
+          }
+      
+          console.log('Transaction successful:', signature);
+          return signature
+        } catch (error) {
+          console.error("Transactin failed", error);
+          throw error
+        }
+      }
 
     async deriveOrderPDA(sellerPublicKey: PublicKey, orderId: number): Promise<PublicKey> {
         const orderIdBuffer = Buffer.alloc(8);
@@ -347,3 +391,7 @@ export class EscrowClient {
         return allOrders.filter(order => order.status === OrderStatus.Completed); // 0 = Active
     }
 }
+
+const connection = new Connection(clusterApiUrl('devnet'), 'confirmed')
+const programId = new PublicKey(import.meta.env.VITE_PROGRAM_ID as string)
+export const escrowClient = new EscrowClient(connection, programId)
