@@ -6,6 +6,7 @@ import { useWallet } from '@solana/wallet-adapter-react'
 import { LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js'
 // import { IconRefresh } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
+import toast from 'react-hot-toast'
 
 export default function Orders() {
     const wallet = useWallet()
@@ -25,6 +26,14 @@ export default function Orders() {
 
     useEffect(() => {
 
+        getAllOrders()
+
+        return () => { }
+    }, [])
+    // const { data } = useGetSignatures({address: new PublicKey(order.escrowAccount!)})
+
+    const getAllOrders = () => {
+        setIsLoaoding(true)
         escrowClient.getAllOrders().then(async (orders) => {
             setAllOrders(orders);
         
@@ -40,10 +49,7 @@ export default function Orders() {
         
             setIsLoaoding(false);
         });
-
-        return () => { }
-    }, [])
-    // const { data } = useGetSignatures({address: new PublicKey(order.escrowAccount!)})
+    }
 
     const formatOrders = (order: EscrowOrder, signature: string): FormattedEscroworder => {
         return {
@@ -73,14 +79,17 @@ export default function Orders() {
         setIsProcessing(true)
         try {
             const signature = await escrowClient.fulfilOrder(selectedOrder!, wallet)
-            const toast = useTransactionToast()
-            toast(signature!)
+            const transactionToast = useTransactionToast()
+            transactionToast(signature!)
         } catch (error) {
-
+            toast.error(`Transaction failed: ${error}`)
         } finally {
             closeModal()
+            setIsProcessing(false)
+            getAllOrders()
         }
     }
+    //Add success handler and toast to make ordeer
 
 
     return (

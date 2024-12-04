@@ -9,9 +9,9 @@ const OrdersTable = lazy(() => import('../pages/orders'))
 const DashboardFeature = lazy(() => import('../components/dashboard/dashboard-feature'))
 
 const links: { label: string; path: string }[] = [
-  { label: 'Order', path: '/orders' },
-  { label: 'Account', path: '/account' },
-  { label: 'Clusters', path: '/clusters' },
+  { label: 'Orders', path: '/orders' },
+  // { label: 'Account', path: '/account' },
+  // { label: 'Clusters', path: '/clusters' },
 ]
 
 const routes: RouteObject[] = [

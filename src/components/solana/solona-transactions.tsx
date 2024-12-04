@@ -130,7 +130,11 @@ export class BuyOrder {
     ]);
 }
 
-// const 
+export type CreateOrderPayload = {
+    wallet: WalletContextState
+    price: string
+    solValue: string
+}
 
 
 // Function to serialize SellOrder data
@@ -157,6 +161,89 @@ class EscrowClient {
         this.connection = connection
         this.programId = programId
     }
+
+    async placeSwapOrder(createOrderPayload: CreateOrderPayload): Promise<string | null> {
+        const { wallet, price, solValue } = createOrderPayload
+        if(!wallet.connected){
+          alert("Kindly connect wallet then try again")
+          return null;
+        }
+    
+        const orderId = await escrowClient.getCurrentOrderCount();
+    
+        //Safety check for 
+        if (BigInt(orderId.toString()) >= BigInt(Number.MAX_SAFE_INTEGER)){
+          throw new Error("Value exceeds maximum accepted value")
+        }
+        // Derive PDA for escrow_account
+        const escrowAccountAddress = await escrowClient.deriveOrderPDA(
+          wallet.publicKey!,
+          Number(orderId),
+        )
+    
+        const deriveOrderTokenPDA = await escrowClient.deriveOrderTokenPDA(escrowAccountAddress)
+    
+        let sellOrder = new EscrowOrder({
+          // tokenMint: null,
+          orderId: orderId,
+          seller: wallet.publicKey?.toBytes()!,
+          escrowAccount: escrowAccountAddress.toBytes(),
+          amount: BigInt(Number(solValue) * LAMPORTS_PER_SOL),
+          price: BigInt(Number(price) * this.USDC_DECIMAL),
+          status: OrderStatus.Active,
+        })
+    
+        // console.log(sellOrder);
+        const serializedOrder = serializeSellOrder(sellOrder);
+    
+        const counterAccount = await escrowClient.getCounterAddress()
+        
+        const transaction = new Transaction();
+    
+        const createOrderIx = new TransactionInstruction({
+            keys: [
+                { pubkey: authority.publicKey, isSigner: true, isWritable: true },
+                { pubkey: counterAccount, isSigner: false, isWritable: true },
+                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+                { pubkey: wallet.publicKey!, isSigner: true, isWritable: true },
+                { pubkey: new PublicKey(sellOrder.escrowAccount!), isSigner: false, isWritable: true },
+                { pubkey: deriveOrderTokenPDA, isSigner: false, isWritable: true },
+            ],
+            programId: programId,
+            data: Buffer.concat([Buffer.from([0]), serializedOrder]),
+        });
+    
+        transaction.add(createOrderIx);
+    
+        try {
+          transaction.feePayer = wallet.publicKey!;
+          const { blockhash } = await connection.getLatestBlockhash()
+          transaction.recentBlockhash = blockhash;
+    
+          transaction.partialSign(authority)
+          const signedTransaction = await wallet.signTransaction!(transaction)
+    
+          // const signature = await sendAndConfirmTransaction(connection, signedTransaction, [authority]);
+          const signature = await connection.sendRawTransaction(signedTransaction.serialize(), {
+            skipPreflight: false,
+            preflightCommitment: 'confirmed'
+          });
+    
+          const confirmation = await connection.confirmTransaction(signature, 'confirmed');
+    
+    
+          if (confirmation.value.err) {
+              throw new Error('Transaction failed to confirm');
+          }
+    
+          console.log('Transaction successful:', signature);
+          return signature
+        } catch (error) {
+          console.error("Transactin failed", error);
+          throw error
+        }
+    
+      }
 
     async fulfilOrder (order: EscrowOrder, wallet: WalletContextState): Promise<string | null> {
         if(!wallet.connected){
@@ -185,9 +272,6 @@ class EscrowClient {
       
           const buyerBalance = Number(buyerTokenAccount.amount) / this.USDC_DECIMAL
           const sellingPrice = Number(((Number(amount) / LAMPORTS_PER_SOL) * (Number(price) / this.USDC_DECIMAL)).toFixed(5))
-      
-          console.log(buyerBalance);
-          console.log(sellingPrice);
           
           
           if ( buyerBalance < sellingPrice) {
@@ -246,7 +330,7 @@ class EscrowClient {
           console.error("Transactin failed", error);
           throw error
         }
-      }
+    }
 
     async deriveOrderPDA(sellerPublicKey: PublicKey, orderId: number): Promise<PublicKey> {
         const orderIdBuffer = Buffer.alloc(8);
